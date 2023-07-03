@@ -5,6 +5,11 @@ import torch
 import h5py
 import time
 import argparse
+import os
+import gc
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -60,7 +65,7 @@ def read_fasta(fasta_path, split_char="!", id_field=0):
 # max_seq_len gives the upper sequences length for applying batch-processing
 # max_batch gives the upper number of sequences per batch
 def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
-                   max_residues=4000, max_seq_len=1000, max_batch=100):
+                   max_residues=2300, max_seq_len=2300, max_batch=16):
 
     results = {"residue_embs": dict(),
                "protein_embs": dict()
@@ -73,6 +78,7 @@ def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
     for seq_idx, (pdb_id, seq) in enumerate(seq_dict, 1):
         seq = seq
         seq_len = len(seq)
+        
         seq = ' '.join(list(seq))
         batch.append((pdb_id, seq, seq_len))
 
@@ -90,19 +96,23 @@ def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
                 with torch.no_grad():
                     # returns: ( batch-size x max_seq_len_in_minibatch x embedding_dim )
                     embedding_repr = model(input_ids, attention_mask=attention_mask)
-            except RuntimeError:
+                    
+            except RuntimeError as e:
                 print("RuntimeError during embedding for {} (L={})".format(pdb_id, seq_len))
+                #print(e)
                 continue
 
             for batch_idx, identifier in enumerate(pdb_ids):  # for each protein in the current mini-batch
                 s_len = seq_lens[batch_idx]
                 # slice off padding --> batch-size x seq_len x embedding_dim
                 emb = embedding_repr.last_hidden_state[batch_idx, :s_len]
+                del embedding_repr
                 if per_residue:  # store per-residue embeddings (Lx1024)
                     results["residue_embs"][identifier] = emb.detach().cpu().numpy().squeeze()
                 if per_protein:  # apply average-pooling to derive per-protein embeddings (1024-d)
                     protein_emb = emb.mean(dim=0)
                     results["protein_embs"][identifier] = protein_emb.detach().cpu().numpy().squeeze()
+                del emb
 
     passed_time = time.time() - start
     avg_time = passed_time / len(results["residue_embs"]) if per_residue else passed_time / len(results["protein_embs"])
