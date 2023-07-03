@@ -7,6 +7,8 @@ import time
 import argparse
 import os
 import gc
+from pathlib import Path
+from tqdm import tqdm
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
@@ -75,7 +77,13 @@ def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
     seq_dict = sorted(seqs.items(), key=lambda kv: len(seqs[kv[0]]), reverse=True)
     start = time.time()
     batch = list()
-    for seq_idx, (pdb_id, seq) in enumerate(seq_dict, 1):
+    for seq_idx, (pdb_id, seq) in tqdm(enumerate(seq_dict, 1),total=len(seq_dict)):
+        if seq_idx % 10000==0 or seq_idx==len(seq_dict):
+            if args.per_residue:
+                save_embeddings(results["residue_embs"], args.per_residue_path,seq_idx)
+            if args.per_protein:
+                save_embeddings(results["protein_embs"], args.per_protein_path,seq_idx)
+
         seq = seq
         seq_len = len(seq)
         
@@ -106,13 +114,13 @@ def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
                 s_len = seq_lens[batch_idx]
                 # slice off padding --> batch-size x seq_len x embedding_dim
                 emb = embedding_repr.last_hidden_state[batch_idx, :s_len]
-                del embedding_repr
                 if per_residue:  # store per-residue embeddings (Lx1024)
                     results["residue_embs"][identifier] = emb.detach().cpu().numpy().squeeze()
                 if per_protein:  # apply average-pooling to derive per-protein embeddings (1024-d)
                     protein_emb = emb.mean(dim=0)
                     results["protein_embs"][identifier] = protein_emb.detach().cpu().numpy().squeeze()
                 del emb
+
 
     passed_time = time.time() - start
     avg_time = passed_time / len(results["residue_embs"]) if per_residue else passed_time / len(results["protein_embs"])
@@ -124,8 +132,12 @@ def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
     return results
 
 
-def save_embeddings(emb_dict,out_path):
-    with h5py.File(str(out_path), "w") as hf:
+def save_embeddings(emb_dict,out_path,seq_idx):
+    out_path = str(out_path)
+    path = Path(out_path)
+    new_file_name = f"{path.stem}_{seq_idx}{path.suffix}"
+    new_file_path = path.with_name(new_file_name)
+    with h5py.File(str(new_file_path), "w") as hf:
         for sequence_id, embedding in emb_dict.items():
             hf.create_dataset(sequence_id, data=embedding)
     return None
@@ -163,12 +175,7 @@ if __name__ == "__main__":
     # Compute embeddings and/or secondary structure predictions
     
     results = get_embeddings(model, tokenizer, seqs, args.per_residue, args.per_protein)
-
     # Store per-residue embeddings
-    if args.per_residue:
-        save_embeddings(results["residue_embs"], args.per_residue_path)
-    if args.per_protein:
-        save_embeddings(results["protein_embs"], args.per_protein_path)
     print("done")
 
 
