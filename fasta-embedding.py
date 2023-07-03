@@ -67,7 +67,7 @@ def read_fasta(fasta_path, split_char="!", id_field=0):
 # max_seq_len gives the upper sequences length for applying batch-processing
 # max_batch gives the upper number of sequences per batch
 def get_embeddings(model, tokenizer, seqs, per_residue, per_protein,
-                   max_residues=2300, max_seq_len=2300, max_batch=16):
+                   max_residues=6200, max_seq_len=100, max_batch=16):
 
     results = {"residue_embs": dict(),
                "protein_embs": dict()
