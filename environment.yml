@@ -24,7 +24,6 @@ dependencies:
   - zlib=1.2.13=h5eee18b_0
   - pip:
       - absl-py==0.15.0
-      - anc2vec==0.1.0
       - astunparse==1.6.3
       - cachetools==5.3.1
       - charset-normalizer==3.1.0
