@@ -4,6 +4,7 @@ import tensorflow as tf
 class Decoder(tf.keras.layers.Layer):
   def __init__(self, num_layers, d_model, num_heads, dff, target_goemb_size, rate=0.1, **kwargs):
     super(Decoder, self).__init__()
+    num_layers = self.get_num_layers(num_layers)
 
     self.d_model = d_model
     self.num_layers = num_layers
@@ -11,11 +12,20 @@ class Decoder(tf.keras.layers.Layer):
     self.dff = dff
     self.target_goemb_size = target_goemb_size
     self.rate = rate
+    
 
     self.dec_layers = [DecoderLayer(d_model, num_heads, dff, rate) for _ in range(num_layers)]
     self.dropout = tf.keras.layers.Dropout(rate)
     super(Decoder, self).__init__(**kwargs)
-
+  def get_num_layers(self,num_layers):
+      if isinstance(num_layers,list):
+        if len(num_layers) == 1:
+            return num_layers[0]
+        else:
+            raise ValueError("The number of layers should be a number, not a list")
+      else:
+          return num_layers
+      
   def call(self, x, enc_output, training, look_ahead_mask, padding_mask):
 
     attention_weights = {}
